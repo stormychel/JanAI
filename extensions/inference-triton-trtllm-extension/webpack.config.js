@@ -1,6 +1,6 @@
-const path = require('path')
 const webpack = require('webpack')
 const packageJson = require('./package.json')
+const settingJson = require('./resources/settings.json')
 
 module.exports = {
   experiments: { outputModule: true },
@@ -17,19 +17,16 @@ module.exports = {
   },
   plugins: [
     new webpack.DefinePlugin({
+      SETTINGS: JSON.stringify(settingJson),
       MODULE: JSON.stringify(`${packageJson.name}/${packageJson.module}`),
     }),
   ],
   output: {
     filename: 'index.js', // Adjust the output file name as needed
-    path: path.resolve(__dirname, 'dist'),
     library: { type: 'module' }, // Specify ESM output format
   },
   resolve: {
     extensions: ['.ts', '.js'],
-    fallback: {
-      path: require.resolve('path-browserify'),
-    },
   },
   optimization: {
     minimize: false,

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from 'react'
 
 import {
@@ -11,16 +10,17 @@ import {
   ConversationalExtension,
   EngineManager,
   ToolManager,
+  ChatCompletionMessage,
 } from '@janhq/core'
 import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai'
 
-import { selectedModelAtom } from '@/containers/DropdownListSidebar'
 import {
   currentPromptAtom,
   editPromptAtom,
   fileUploadAtom,
 } from '@/containers/Providers/Jotai'
 
+import { Stack } from '@/utils/Stack'
 import { compressImage, getBase64 } from '@/utils/base64'
 import { MessageRequestBuilder } from '@/utils/messageRequestBuilder'
 import { toRuntimeParams, toSettingParams } from '@/utils/modelParam'
@@ -35,6 +35,7 @@ import {
   deleteMessageAtom,
   getCurrentChatMessagesAtom,
 } from '@/helpers/atoms/ChatMessage.atom'
+import { selectedModelAtom } from '@/helpers/atoms/Model.atom'
 import {
   activeThreadAtom,
   engineParamsUpdateAtom,
@@ -91,6 +92,33 @@ export default function useSendChatMessage() {
     selectedModelRef.current = selectedModel
   }, [selectedModel])
 
+  const normalizeMessages = (
+    messages: ChatCompletionMessage[]
+  ): ChatCompletionMessage[] => {
+    const stack = new Stack<ChatCompletionMessage>()
+    for (const message of messages) {
+      if (stack.isEmpty()) {
+        stack.push(message)
+        continue
+      }
+      const topMessage = stack.peek()
+
+      if (message.role === topMessage.role) {
+        // add an empty message
+        stack.push({
+          role:
+            topMessage.role === ChatCompletionRole.User
+              ? ChatCompletionRole.Assistant
+              : ChatCompletionRole.User,
+          content: '.', // some model requires not empty message
+        })
+      }
+      stack.push(message)
+    }
+
+    return stack.reverseOutput()
+  }
+
   const resendChatMessage = async (currentMessage: ThreadMessage) => {
     if (!activeThreadRef.current) {
       console.error('No active thread')
@@ -103,7 +131,9 @@ export default function useSendChatMessage() {
       activeThreadRef.current.assistants[0].model ?? selectedModelRef.current,
       activeThreadRef.current,
       currentMessages
-    ).addSystemMessage(activeThreadRef.current.assistants[0]?.instructions)
+    )
+      .addSystemMessage(activeThreadRef.current.assistants[0]?.instructions)
+      .removeLastAssistantMessage()
 
     const modelId =
       selectedModelRef.current?.id ??
@@ -138,6 +168,8 @@ export default function useSendChatMessage() {
         (assistant) => assistant.tools ?? []
       ) ?? []
     )
+
+    request.messages = normalizeMessages(request.messages ?? [])
 
     const engine =
       requestBuilder.model?.engine ?? selectedModelRef.current?.engine ?? ''
@@ -235,6 +267,10 @@ export default function useSendChatMessage() {
       selectedModelRef.current?.id ??
       activeThreadRef.current.assistants[0].model.id
 
+    if (base64Blob) {
+      setFileUpload([])
+    }
+
     if (modelRef.current?.id !== modelId) {
       setQueuedMessage(true)
       const error = await startModel(modelId).catch((error: Error) => error)
@@ -253,6 +289,7 @@ export default function useSendChatMessage() {
         (assistant) => assistant.tools ?? []
       ) ?? []
     )
+    request.messages = normalizeMessages(request.messages ?? [])
 
     // Request for inference
     EngineManager.instance()
@@ -262,10 +299,6 @@ export default function useSendChatMessage() {
     // Reset states
     setReloadModel(false)
     setEngineParamsUpdate(false)
-
-    if (base64Blob) {
-      setFileUpload([])
-    }
   }
 
   return {

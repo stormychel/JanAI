@@ -7,17 +7,26 @@ import { toaster } from '@/containers/Toast'
 
 import { LAST_USED_MODEL_ID } from './useRecommendedModel'
 
+import { vulkanEnabledAtom } from '@/helpers/atoms/AppConfig.atom'
 import { downloadedModelsAtom } from '@/helpers/atoms/Model.atom'
 import { activeThreadAtom } from '@/helpers/atoms/Thread.atom'
 
 export const activeModelAtom = atom<Model | undefined>(undefined)
 export const loadModelErrorAtom = atom<string | undefined>(undefined)
 
-export const stateModelAtom = atom({
+type ModelState = {
+  state: string
+  loading: boolean
+  model?: Model
+}
+
+export const stateModelAtom = atom<ModelState>({
   state: 'start',
   loading: false,
-  model: '',
+  model: undefined,
 })
+
+const pendingModelLoadAtom = atom<boolean>(false)
 
 export function useActiveModel() {
   const [activeModel, setActiveModel] = useAtom(activeModelAtom)
@@ -25,6 +34,8 @@ export function useActiveModel() {
   const [stateModel, setStateModel] = useAtom(stateModelAtom)
   const downloadedModels = useAtomValue(downloadedModelsAtom)
   const setLoadModelError = useSetAtom(loadModelErrorAtom)
+  const [pendingModelLoad, setPendingModelLoad] = useAtom(pendingModelLoadAtom)
+  const isVulkanEnabled = useAtomValue(vulkanEnabledAtom)
 
   const downloadedModelsRef = useRef<Model[]>([])
 
@@ -32,14 +43,15 @@ export function useActiveModel() {
     downloadedModelsRef.current = downloadedModels
   }, [downloadedModels])
 
-  const startModel = async (modelId: string) => {
+  const startModel = async (modelId: string, abortable: boolean = true) => {
     if (
       (activeModel && activeModel.id === modelId) ||
-      (stateModel.model === modelId && stateModel.loading)
+      (stateModel.model?.id === modelId && stateModel.loading)
     ) {
       console.debug(`Model ${modelId} is already initialized. Ignore..`)
       return Promise.resolve()
     }
+    setPendingModelLoad(true)
 
     let model = downloadedModelsRef?.current.find((e) => e.id === modelId)
 
@@ -52,7 +64,7 @@ export function useActiveModel() {
 
     setActiveModel(undefined)
 
-    setStateModel({ state: 'start', loading: true, model: modelId })
+    setStateModel({ state: 'start', loading: true, model })
 
     if (!model) {
       toaster({
@@ -63,7 +75,7 @@ export function useActiveModel() {
       setStateModel(() => ({
         state: 'start',
         loading: false,
-        model: '',
+        model: undefined,
       }))
 
       return Promise.reject(`Model ${modelId} not found!`)
@@ -80,6 +92,11 @@ export function useActiveModel() {
       }
     }
 
+    if (isVulkanEnabled) {
+      // @ts-expect-error flash_attn is newly added and will be migrate to cortex in the future
+      model.settings['flash_attn'] = false
+    }
+
     localStorage.setItem(LAST_USED_MODEL_ID, model.id)
     const engine = EngineManager.instance().get(model.engine)
     return engine
@@ -89,7 +106,7 @@ export function useActiveModel() {
         setStateModel(() => ({
           state: 'stop',
           loading: false,
-          model: model.id,
+          model,
         }))
         toaster({
           title: 'Success!',
@@ -101,13 +118,17 @@ export function useActiveModel() {
         setStateModel(() => ({
           state: 'start',
           loading: false,
-          model: model.id,
+          model,
         }))
+
+        if (!pendingModelLoad && abortable) {
+          return Promise.reject(new Error('aborted'))
+        }
 
         toaster({
           title: 'Failed!',
           description: `Model ${model.id} failed to start.`,
-          type: 'success',
+          type: 'error',
         })
         setLoadModelError(error)
         return Promise.reject(error)
@@ -115,18 +136,39 @@ export function useActiveModel() {
   }
 
   const stopModel = useCallback(async () => {
-    if (activeModel) {
-      setStateModel({ state: 'stop', loading: true, model: activeModel.id })
-      const engine = EngineManager.instance().get(activeModel.engine)
-      await engine
-        ?.unloadModel(activeModel)
-        .catch()
-        .then(() => {
-          setActiveModel(undefined)
-          setStateModel({ state: 'start', loading: false, model: '' })
-        })
-    }
-  }, [activeModel, setActiveModel, setStateModel])
+    const stoppingModel = activeModel || stateModel.model
+    if (!stoppingModel || (stateModel.state === 'stop' && stateModel.loading))
+      return
 
-  return { activeModel, startModel, stopModel, stateModel }
+    setStateModel({ state: 'stop', loading: true, model: stoppingModel })
+    const engine = EngineManager.instance().get(stoppingModel.engine)
+    return engine
+      ?.unloadModel(stoppingModel)
+      .catch()
+      .then(() => {
+        setActiveModel(undefined)
+        setStateModel({ state: 'start', loading: false, model: undefined })
+        setPendingModelLoad(false)
+      })
+  }, [
+    activeModel,
+    setActiveModel,
+    setStateModel,
+    setPendingModelLoad,
+    stateModel,
+  ])
+
+  const stopInference = useCallback(async () => {
+    // Loading model
+    if (stateModel.loading) {
+      stopModel()
+      return
+    }
+    if (!activeModel) return
+
+    const engine = EngineManager.instance().get(activeModel.engine)
+    engine?.stopInference()
+  }, [activeModel, stateModel, stopModel])
+
+  return { activeModel, startModel, stopModel, stopInference, stateModel }
 }

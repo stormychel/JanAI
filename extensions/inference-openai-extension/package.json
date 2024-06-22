@@ -1,6 +1,7 @@
 {
   "name": "@janhq/inference-openai-extension",
-  "version": "1.0.0",
+  "productName": "OpenAI Inference Engine",
+  "version": "1.0.2",
   "description": "This extension enables OpenAI chat completion API calls",
   "main": "dist/index.js",
   "module": "dist/module.js",
@@ -25,7 +26,6 @@
   "dependencies": {
     "@janhq/core": "file:../../core",
     "fetch-retry": "^5.0.6",
-    "path-browserify": "^1.0.1",
     "ulidx": "^2.3.0"
   },
   "engines": {

@@ -1,5 +1,6 @@
 {
   "name": "@janhq/conversational-extension",
+  "productName": "Conversational",
   "version": "1.0.0",
   "description": "This extension enables conversations and state persistence via your filesystem",
   "main": "dist/index.js",
@@ -21,8 +22,7 @@
     "ts-loader": "^9.5.0"
   },
   "dependencies": {
-    "@janhq/core": "file:../../core",
-    "path-browserify": "^1.0.1"
+    "@janhq/core": "file:../../core"
   },
   "engines": {
     "node": ">=18.0.0"

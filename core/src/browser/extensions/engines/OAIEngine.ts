@@ -31,6 +31,12 @@ export abstract class OAIEngine extends AIEngine {
   // The loaded model instance
   loadedModel: Model | undefined
 
+  // Transform the payload
+  transformPayload?: Function
+
+  // Transform the response
+  transformResponse?: Function
+
   /**
    * On extension load, subscribe to events.
    */
@@ -48,7 +54,7 @@ export abstract class OAIEngine extends AIEngine {
   /*
    * Inference request
    */
-  override inference(data: MessageRequest) {
+  override async inference(data: MessageRequest) {
     if (data.model?.engine?.toString() !== this.provider) return
 
     const timestamp = Date.now()
@@ -77,12 +83,24 @@ export abstract class OAIEngine extends AIEngine {
       ...data.model,
     }
 
+    const header = await this.headers()
+    let requestBody = {
+      messages: data.messages ?? [],
+      model: model.id,
+      stream: true,
+      ...model.parameters,
+    }
+    if (this.transformPayload) {
+      requestBody = this.transformPayload(requestBody)
+    }
+
     requestInference(
       this.inferenceUrl,
-      data.messages ?? [],
+      requestBody,
       model,
       this.controller,
-      this.headers()
+      header,
+      this.transformResponse
     ).subscribe({
       next: (content: any) => {
         const messageContent: ThreadContent = {
@@ -100,12 +118,22 @@ export abstract class OAIEngine extends AIEngine {
         events.emit(MessageEvent.OnMessageUpdate, message)
       },
       error: async (err: any) => {
+        console.debug('inference url: ', this.inferenceUrl)
+        console.debug('header: ', header)
+        console.error(`Inference error:`, JSON.stringify(err))
         if (this.isCancelled || message.content.length) {
           message.status = MessageStatus.Stopped
           events.emit(MessageEvent.OnMessageUpdate, message)
           return
         }
         message.status = MessageStatus.Error
+        message.content[0] = {
+          type: ContentType.Text,
+          text: {
+            value: err.message,
+            annotations: [],
+          },
+        }
         message.error_code = err.code
         events.emit(MessageEvent.OnMessageUpdate, message)
       },
@@ -123,7 +151,7 @@ export abstract class OAIEngine extends AIEngine {
   /**
    * Headers for the inference request
    */
-  headers(): HeadersInit {
+  async headers(): Promise<HeadersInit> {
     return {}
   }
 }

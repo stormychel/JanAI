@@ -4,13 +4,10 @@ import { PropsWithChildren, useCallback, useEffect, useState } from 'react'
 
 import { Toaster } from 'react-hot-toast'
 
-import { usePathname } from 'next/navigation'
-
-import { TooltipProvider } from '@janhq/uikit'
-
-import GPUDriverPrompt from '@/containers/GPUDriverPromptModal'
+import Loader from '@/containers/Loader'
 import EventListenerWrapper from '@/containers/Providers/EventListener'
 import JotaiWrapper from '@/containers/Providers/Jotai'
+
 import ThemeWrapper from '@/containers/Providers/Theme'
 
 import { setupCoreServices } from '@/services/coreService'
@@ -21,18 +18,15 @@ import {
 
 import Umami from '@/utils/umami'
 
-import Loader from '../Loader'
-
 import DataLoader from './DataLoader'
 
+import DeepLinkListener from './DeepLinkListener'
 import KeyListener from './KeyListener'
+import Responsive from './Responsive'
 
 import { extensionManager } from '@/extension'
 
-const Providers = (props: PropsWithChildren) => {
-  const { children } = props
-  const pathname = usePathname()
-
+const Providers = ({ children }: PropsWithChildren) => {
   const [setupCore, setSetupCore] = useState(false)
   const [activated, setActivated] = useState(false)
   const [settingUp, setSettingUp] = useState(false)
@@ -43,11 +37,6 @@ const Providers = (props: PropsWithChildren) => {
 
     setTimeout(async () => {
       if (!isCoreExtensionInstalled()) {
-        // TODO: Proper window handle
-        // Do not migrate extension from quick ask window
-        if (pathname === '/search') {
-          return
-        }
         setSettingUp(true)
         await setupBaseExtensions()
         return
@@ -57,7 +46,7 @@ const Providers = (props: PropsWithChildren) => {
       setSettingUp(false)
       setActivated(true)
     }, 500)
-  }, [pathname])
+  }, [])
 
   // Services Setup
   useEffect(() => {
@@ -81,23 +70,26 @@ const Providers = (props: PropsWithChildren) => {
   }, [setupCore, setupExtensions])
 
   return (
-    <JotaiWrapper>
-      <ThemeWrapper>
+    <ThemeWrapper>
+      <JotaiWrapper>
         <Umami />
         {settingUp && <Loader description="Preparing Update..." />}
         {setupCore && activated && (
-          <KeyListener>
-            <EventListenerWrapper>
-              <TooltipProvider delayDuration={0}>
-                <DataLoader>{children}</DataLoader>
-              </TooltipProvider>
-              {!isMac && <GPUDriverPrompt />}
-            </EventListenerWrapper>
-            <Toaster />
-          </KeyListener>
+          <>
+            <Responsive>
+              <KeyListener>
+                <EventListenerWrapper>
+                  <DataLoader>
+                    <DeepLinkListener>{children}</DeepLinkListener>
+                  </DataLoader>
+                </EventListenerWrapper>
+                <Toaster />
+              </KeyListener>
+            </Responsive>
+          </>
         )}
-      </ThemeWrapper>
-    </JotaiWrapper>
+      </JotaiWrapper>
+    </ThemeWrapper>
   )
 }
 

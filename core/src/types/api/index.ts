@@ -1,3 +1,5 @@
+import { ChatCompletionMessage } from '../inference'
+
 /**
  * Native Route APIs
  * @description Enum of all the routes exposed by the app
@@ -7,8 +9,15 @@ export enum NativeRoute {
   openAppDirectory = 'openAppDirectory',
   openFileExplore = 'openFileExplorer',
   selectDirectory = 'selectDirectory',
-  selectModelFiles = 'selectModelFiles',
+  selectFiles = 'selectFiles',
   relaunch = 'relaunch',
+  setNativeThemeLight = 'setNativeThemeLight',
+  setNativeThemeDark = 'setNativeThemeDark',
+
+  setMinimizeApp = 'setMinimizeApp',
+  setCloseApp = 'setCloseApp',
+  setMaximizeApp = 'setMaximizeApp',
+  showOpenMenu = 'showOpenMenu',
 
   hideQuickAskWindow = 'hideQuickAskWindow',
   sendQuickAskInput = 'sendQuickAskInput',
@@ -17,6 +26,7 @@ export enum NativeRoute {
   showMainWindow = 'showMainWindow',
 
   quickAskSizeUpdated = 'quickAskSizeUpdated',
+  ackDeepLink = 'ackDeepLink',
 }
 
 /**
@@ -32,7 +42,6 @@ export enum AppRoute {
   startServer = 'startServer',
   stopServer = 'stopServer',
   log = 'log',
-  logServer = 'logServer',
   systemInformation = 'systemInformation',
   showToast = 'showToast',
 }
@@ -44,6 +53,8 @@ export enum AppEvent {
 
   onUserSubmitQuickAsk = 'onUserSubmitQuickAsk',
   onSelectedText = 'onSelectedText',
+
+  onDeepLink = 'onDeepLink',
 }
 
 export enum DownloadRoute {
@@ -52,6 +63,7 @@ export enum DownloadRoute {
   pauseDownload = 'pauseDownload',
   resumeDownload = 'resumeDownload',
   getDownloadProgress = 'getDownloadProgress',
+  getFileSize = 'getFileSize',
 }
 
 export enum DownloadEvent {
@@ -154,3 +166,8 @@ export const APIEvents = [
   ...Object.values(DownloadEvent),
   ...Object.values(LocalImportModelEvent),
 ]
+export type PayloadType = {
+  messages: ChatCompletionMessage[]
+  model: string
+  stream: boolean
+}

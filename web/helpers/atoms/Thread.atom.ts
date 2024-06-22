@@ -5,6 +5,7 @@ import {
   ThreadContent,
   ThreadState,
 } from '@janhq/core'
+
 import { atom } from 'jotai'
 
 export const engineParamsUpdateAtom = atom<boolean>(false)
@@ -127,13 +128,6 @@ export const setThreadModelParamsAtom = atom(
   (get, set, threadId: string, params: ModelParams) => {
     const currentState = { ...get(threadModelParamsAtom) }
     currentState[threadId] = params
-    console.debug(
-      `Update model params for thread ${threadId}, ${JSON.stringify(
-        params,
-        null,
-        2
-      )}`
-    )
     set(threadModelParamsAtom, currentState)
   }
 )

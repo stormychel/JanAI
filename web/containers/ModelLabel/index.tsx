@@ -1,5 +1,7 @@
 import React from 'react'
 
+import { ModelMetadata } from '@janhq/core'
+import { Badge } from '@janhq/joi'
 import { useAtomValue } from 'jotai'
 
 import { useActiveModel } from '@/hooks/useActiveModel'
@@ -19,10 +21,18 @@ import {
 } from '@/helpers/atoms/SystemBar.atom'
 
 type Props = {
-  size: number
+  metadata: ModelMetadata
+  compact?: boolean
+}
+const UnsupportedModel = () => {
+  return (
+    <Badge className="space-x-1 rounded-md" theme="warning">
+      <span>Coming Soon</span>
+    </Badge>
+  )
 }
 
-const ModelLabel: React.FC<Props> = ({ size }) => {
+const ModelLabel = ({ metadata, compact }: Props) => {
   const { activeModel } = useActiveModel()
   const totalRam = useAtomValue(totalRamAtom)
   const usedRam = useAtomValue(usedRamAtom)
@@ -39,20 +49,25 @@ const ModelLabel: React.FC<Props> = ({ size }) => {
       return (
         <NotEnoughMemoryLabel
           unit={settings?.run_mode === 'gpu' ? 'VRAM' : 'RAM'}
+          compact={compact}
         />
       )
     }
-    if (minimumRamModel < availableRam) {
+    if (minimumRamModel < availableRam && !compact) {
       return <RecommendedLabel />
     }
     if (minimumRamModel < totalRam && minimumRamModel > availableRam) {
-      return <SlowOnYourDeviceLabel />
+      return <SlowOnYourDeviceLabel compact={compact} />
     }
 
     return null
   }
 
-  return getLabel(size)
+  return metadata.tags.includes('Coming Soon') ? (
+    <UnsupportedModel />
+  ) : (
+    getLabel(metadata.size ?? 0)
+  )
 }
 
 export default React.memo(ModelLabel)

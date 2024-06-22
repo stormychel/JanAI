@@ -41,7 +41,7 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-13
     environment: production
     permissions:
       contents: write
@@ -159,4 +159,3 @@ jobs:
         with:
           name: latest-mac-x64
           path: ./electron/dist/latest-mac.yml
-

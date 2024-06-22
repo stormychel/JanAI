@@ -2,7 +2,6 @@ import {
   fs,
   downloadFile,
   abortDownload,
-  getResourcePath,
   InferenceEngine,
   joinPath,
   ModelExtension,
@@ -11,7 +10,6 @@ import {
   events,
   DownloadEvent,
   DownloadRoute,
-  ModelEvent,
   DownloadState,
   OptionType,
   ImportingModel,
@@ -19,9 +17,24 @@ import {
   baseName,
   GpuSetting,
   DownloadRequest,
+  executeOnMain,
+  HuggingFaceRepoData,
+  Quantization,
+  log,
+  getFileSize,
+  AllQuantizations,
+  ModelEvent,
 } from '@janhq/core'
 
 import { extractFileName } from './helpers/path'
+import { GGUFMetadata, gguf } from '@huggingface/gguf'
+import { NotSupportedModelError } from './@types/NotSupportModelError'
+import { InvalidHostError } from './@types/InvalidHostError'
+
+declare const SETTINGS: Array<any>
+enum Settings {
+  huggingFaceAccessToken = 'hugging-face-access-token',
+}
 
 /**
  * A extension for models
@@ -36,17 +49,26 @@ export default class JanModelExtension extends ModelExtension {
     InferenceEngine.nitro_tensorrt_llm,
   ]
   private static readonly _tensorRtEngineFormat = '.engine'
-  private static readonly _configDirName = 'config'
-  private static readonly _defaultModelFileName = 'default-model.json'
   private static readonly _supportedGpuArch = ['ampere', 'ada']
+  private static readonly _safetensorsRegexs = [
+    /model\.safetensors$/,
+    /model-[0-9]+-of-[0-9]+\.safetensors$/,
+  ]
+  private static readonly _pytorchRegexs = [
+    /pytorch_model\.bin$/,
+    /consolidated\.[0-9]+\.pth$/,
+    /pytorch_model-[0-9]+-of-[0-9]+\.bin$/,
+    /.*\.pt$/,
+  ]
+  interrupted = false
 
   /**
    * Called when the extension is loaded.
    * @override
    */
   async onLoad() {
-    this.copyModelsToHomeDir()
     // Handle Desktop Events
+    this.registerSettings(SETTINGS)
     this.handleDesktopEvents()
   }
 
@@ -54,38 +76,7 @@ export default class JanModelExtension extends ModelExtension {
    * Called when the extension is unloaded.
    * @override
    */
-  onUnload(): void {}
-
-  private async copyModelsToHomeDir() {
-    try {
-      // Check for migration conditions
-      if (
-        localStorage.getItem(`${EXTENSION_NAME}-version`) === VERSION &&
-        (await fs.existsSync(JanModelExtension._homeDir))
-      ) {
-        // ignore if the there is no need to migrate
-        console.debug('Models already persisted.')
-        return
-      }
-      // copy models folder from resources to home directory
-      const resourePath = await getResourcePath()
-      const srcPath = await joinPath([resourePath, 'models'])
-
-      const janDataFolderPath = await getJanDataFolderPath()
-      const destPath = await joinPath([janDataFolderPath, 'models'])
-
-      await fs.syncFile(srcPath, destPath)
-
-      console.debug('Finished syncing models')
-
-      // Finished migration
-      localStorage.setItem(`${EXTENSION_NAME}-version`, VERSION)
-
-      events.emit(ModelEvent.OnModelsUpdate, {})
-    } catch (err) {
-      console.error(err)
-    }
-  }
+  async onUnload() {}
 
   /**
    * Downloads a machine learning model.
@@ -101,7 +92,11 @@ export default class JanModelExtension extends ModelExtension {
     // create corresponding directory
     const modelDirPath = await joinPath([JanModelExtension._homeDir, model.id])
     if (!(await fs.existsSync(modelDirPath))) await fs.mkdir(modelDirPath)
-
+    const modelJsonPath = await joinPath([modelDirPath, 'model.json'])
+    if (!(await fs.existsSync(modelJsonPath))) {
+      await fs.writeFileSync(modelJsonPath, JSON.stringify(model, null, 2))
+      events.emit(ModelEvent.OnModelsUpdate, {})
+    }
     if (model.engine === InferenceEngine.nitro_tensorrt_llm) {
       if (!gpuSettings || gpuSettings.gpus.length === 0) {
         console.error('No GPU found. Please check your GPU setting.')
@@ -121,8 +116,8 @@ export default class JanModelExtension extends ModelExtension {
       }
 
       if (!JanModelExtension._supportedGpuArch.includes(gpuArch)) {
-        console.error(
-          `Your GPU: ${firstGpu} is not supported. Only 20xx, 30xx, 40xx series are supported.`
+        console.debug(
+          `Your GPU: ${JSON.stringify(firstGpu)} is not supported. Only 30xx, 40xx series are supported.`
         )
         return
       }
@@ -174,6 +169,98 @@ export default class JanModelExtension extends ModelExtension {
         this.startPollingDownloadProgress(model.id)
       }
     }
+  }
+
+  private toHuggingFaceUrl(repoId: string): string {
+    try {
+      const url = new URL(repoId)
+      if (url.host !== 'huggingface.co') {
+        throw new InvalidHostError(`Invalid Hugging Face repo URL: ${repoId}`)
+      }
+
+      const paths = url.pathname.split('/').filter((e) => e.trim().length > 0)
+      if (paths.length < 2) {
+        throw new InvalidHostError(`Invalid Hugging Face repo URL: ${repoId}`)
+      }
+
+      return `${url.origin}/api/models/${paths[0]}/${paths[1]}`
+    } catch (err) {
+      if (err instanceof InvalidHostError) {
+        throw err
+      }
+
+      if (repoId.startsWith('https')) {
+        throw new Error(`Cannot parse url: ${repoId}`)
+      }
+
+      return `https://huggingface.co/api/models/${repoId}`
+    }
+  }
+
+  async fetchHuggingFaceRepoData(repoId: string): Promise<HuggingFaceRepoData> {
+    const sanitizedUrl = this.toHuggingFaceUrl(repoId)
+    console.debug('sanitizedUrl', sanitizedUrl)
+
+    const huggingFaceAccessToken = (
+      await this.getSetting<string>(Settings.huggingFaceAccessToken, '')
+    ).trim()
+
+    const headers = {
+      Accept: 'application/json',
+    }
+
+    if (huggingFaceAccessToken.length > 0) {
+      headers['Authorization'] = `Bearer ${huggingFaceAccessToken}`
+    }
+
+    const res = await fetch(sanitizedUrl, {
+      headers: headers,
+    })
+    const response = await res.json()
+    if (response['error'] != null) {
+      throw new Error(response['error'])
+    }
+
+    const data = response as HuggingFaceRepoData
+
+    if (data.tags.indexOf('gguf') === -1) {
+      throw new NotSupportedModelError(
+        `${repoId} is not supported. Only GGUF models are supported.`
+      )
+    }
+
+    const promises: Promise<number>[] = []
+
+    // fetching file sizes
+    const url = new URL(sanitizedUrl)
+    const paths = url.pathname.split('/').filter((e) => e.trim().length > 0)
+
+    for (const sibling of data.siblings) {
+      const downloadUrl = `https://huggingface.co/${paths[2]}/${paths[3]}/resolve/main/${sibling.rfilename}`
+      sibling.downloadUrl = downloadUrl
+      promises.push(getFileSize(downloadUrl))
+    }
+
+    const result = await Promise.all(promises)
+    for (let i = 0; i < data.siblings.length; i++) {
+      data.siblings[i].fileSize = result[i]
+    }
+
+    AllQuantizations.forEach((quantization) => {
+      data.siblings.forEach((sibling) => {
+        if (!sibling.quantization && sibling.rfilename.includes(quantization)) {
+          sibling.quantization = quantization
+        }
+      })
+    })
+
+    data.modelUrl = `https://huggingface.co/${paths[2]}/${paths[3]}`
+    return data
+  }
+
+  async fetchModelMetadata(url: string): Promise<GGUFMetadata> {
+    const { metadata } = await gguf(url)
+    return metadata
   }
 
   /**
@@ -330,6 +417,30 @@ export default class JanModelExtension extends ModelExtension {
     )
   }
 
+  private async getModelJsonPath(
+    folderFullPath: string
+  ): Promise<string | undefined> {
+    // try to find model.json recursively inside each folder
+    if (!(await fs.existsSync(folderFullPath))) return undefined
+    const files: string[] = await fs.readdirSync(folderFullPath)
+    if (files.length === 0) return undefined
+    if (files.includes(JanModelExtension._modelMetadataFileName)) {
+      return joinPath([
+        folderFullPath,
+        JanModelExtension._modelMetadataFileName,
+      ])
+    }
+    // continue recursive
+    for (const file of files) {
+      const path = await joinPath([folderFullPath, file])
+      const fileStats = await fs.fileStat(path)
+      if (fileStats.isDirectory) {
+        const result = await this.getModelJsonPath(path)
+        if (result) return result
+      }
+    }
+  }
+
   private async getModelsMetadata(
     selector?: (path: string, model: Model) => Promise<boolean>
   ): Promise<Model[]> {
@@ -351,11 +462,11 @@ export default class JanModelExtension extends ModelExtension {
       const readJsonPromises = allDirectories.map(async (dirName) => {
         // filter out directories that don't match the selector
         // read model.json
-        const jsonPath = await joinPath([
+        const folderFullPath = await joinPath([
           JanModelExtension._homeDir,
           dirName,
-          JanModelExtension._modelMetadataFileName,
         ])
+        const jsonPath = await this.getModelJsonPath(folderFullPath)
 
         if (await fs.existsSync(jsonPath)) {
           // if we have the model.json file, read it
@@ -489,20 +600,9 @@ export default class JanModelExtension extends ModelExtension {
     return model
   }
 
-  private async getDefaultModel(): Promise<Model | undefined> {
-    const defaultModelPath = await joinPath([
-      JanModelExtension._homeDir,
-      JanModelExtension._configDirName,
-      JanModelExtension._defaultModelFileName,
-    ])
-
-    if (!(await fs.existsSync(defaultModelPath))) {
-      return undefined
-    }
-
-    const model = await this.readModelMetadata(defaultModelPath)
-
-    return typeof model === 'object' ? model : JSON.parse(model)
+  override async getDefaultModel(): Promise<Model> {
+    const defaultModel = DEFAULT_MODEL as Model
+    return defaultModel
   }
 
   /**
@@ -720,5 +820,219 @@ export default class JanModelExtension extends ModelExtension {
       LocalImportModelEvent.onLocalImportModelFinished,
       importedModels
     )
+  }
+
+  private getGgufFileList(
+    repoData: HuggingFaceRepoData,
+    selectedQuantization: Quantization
+  ): string[] {
+    return repoData.siblings
+      .map((file) => file.rfilename)
+      .filter((file) => file.indexOf(selectedQuantization) !== -1)
+      .filter((file) => file.endsWith('.gguf'))
+  }
+
+  private getFileList(repoData: HuggingFaceRepoData): string[] {
+    // SafeTensors first, if not, then PyTorch
+    const modelFiles = repoData.siblings
+      .map((file) => file.rfilename)
+      .filter((file) =>
+        JanModelExtension._safetensorsRegexs.some((regex) => regex.test(file))
+      )
+    if (modelFiles.length === 0) {
+      repoData.siblings.forEach((file) => {
+        if (
+          JanModelExtension._pytorchRegexs.some((regex) =>
+            regex.test(file.rfilename)
+          )
+        ) {
+          modelFiles.push(file.rfilename)
+        }
+      })
+    }
+
+    const vocabFiles = [
+      'tokenizer.model',
+      'vocab.json',
+      'tokenizer.json',
+    ].filter((file) =>
+      repoData.siblings.some((sibling) => sibling.rfilename === file)
+    )
+
+    const etcFiles = repoData.siblings
+      .map((file) => file.rfilename)
+      .filter(
+        (file) =>
+          (file.endsWith('.json') && !vocabFiles.includes(file)) ||
+          file.endsWith('.txt') ||
+          file.endsWith('.py') ||
+          file.endsWith('.tiktoken')
+      )
+
+    return [...modelFiles, ...vocabFiles, ...etcFiles]
+  }
+
+  private async getModelDirPath(repoID: string): Promise<string> {
+    const modelName = repoID.split('/').slice(1).join('/')
+    return joinPath([await getJanDataFolderPath(), 'models', modelName])
+  }
+
+  private async getConvertedModelPath(repoID: string): Promise<string> {
+    const modelName = repoID.split('/').slice(1).join('/')
+    const modelDirPath = await this.getModelDirPath(repoID)
+    return joinPath([modelDirPath, modelName + '.gguf'])
+  }
+
+  private async getQuantizedModelPath(
+    repoID: string,
+    quantization: Quantization
+  ): Promise<string> {
+    const modelName = repoID.split('/').slice(1).join('/')
+    const modelDirPath = await this.getModelDirPath(repoID)
+    return joinPath([
+      modelDirPath,
+      modelName + `-${quantization.toLowerCase()}.gguf`,
+    ])
+  }
+  private getCtxLength(config: {
+    max_sequence_length?: number
+    max_position_embeddings?: number
+    n_ctx?: number
+  }): number {
+    if (config.max_sequence_length) return config.max_sequence_length
+    if (config.max_position_embeddings) return config.max_position_embeddings
+    if (config.n_ctx) return config.n_ctx
+    return 2048
+  }
+
+  /**
+   * Converts a Hugging Face model to GGUF.
+   * @param repoID - The repo ID of the model to convert.
+   * @returns A promise that resolves when the conversion is complete.
+   */
+  async convert(repoID: string): Promise<void> {
+    if (this.interrupted) return
+    const modelDirPath = await this.getModelDirPath(repoID)
+    const modelOutPath = await this.getConvertedModelPath(repoID)
+    if (!(await fs.existsSync(modelDirPath))) {
+      throw new Error('Model dir not found')
+    }
+    if (await fs.existsSync(modelOutPath)) return
+
+    await executeOnMain(NODE, 'installDeps')
+    if (this.interrupted) return
+
+    try {
+      await executeOnMain(
+        NODE,
+        'convertHf',
+        modelDirPath,
+        modelOutPath + '.temp'
+      )
+    } catch (err) {
+      log(`[Conversion]::Debug: Error using hf-to-gguf.py, trying convert.py`)
+
+      let ctx = 2048
+      try {
+        const config = await fs.readFileSync(
+          await joinPath([modelDirPath, 'config.json']),
+          'utf8'
+        )
+        const configParsed = JSON.parse(config)
+        ctx = this.getCtxLength(configParsed)
+        configParsed.max_sequence_length = ctx
+        await fs.writeFileSync(
+          await joinPath([modelDirPath, 'config.json']),
+          JSON.stringify(configParsed, null, 2)
+        )
+      } catch (err) {
+        log(`${err}`)
+        // ignore missing config.json
+      }
+
+      const bpe = await fs.existsSync(
+        await joinPath([modelDirPath, 'vocab.json'])
+      )
+
+      await executeOnMain(
+        NODE,
+        'convert',
+        modelDirPath,
+        modelOutPath + '.temp',
+        {
+          ctx,
+          bpe,
+        }
+      )
+    }
+    await executeOnMain(
+      NODE,
+      'renameSync',
+      modelOutPath + '.temp',
+      modelOutPath
+    )
+
+    for (const file of await fs.readdirSync(modelDirPath)) {
+      if (
+        modelOutPath.endsWith(file) ||
+        (file.endsWith('config.json') && !file.endsWith('_config.json'))
+      )
+        continue
+      await fs.unlinkSync(await joinPath([modelDirPath, file]))
+    }
+  }
+
+  /**
+   * Quantizes a GGUF model.
+   * @param repoID - The repo ID of the model to quantize.
+   * @param quantization - The quantization to use.
+   * @returns A promise that resolves when the quantization is complete.
+   */
+  async quantize(repoID: string, quantization: Quantization): Promise<void> {
+    if (this.interrupted) return
+    const modelDirPath = await this.getModelDirPath(repoID)
+    const modelOutPath = await this.getQuantizedModelPath(repoID, quantization)
+    if (!(await fs.existsSync(modelDirPath))) {
+      throw new Error('Model dir not found')
+    }
+    if (await fs.existsSync(modelOutPath)) return
+
+    await executeOnMain(
+      NODE,
+      'quantize',
+      await this.getConvertedModelPath(repoID),
+      modelOutPath + '.temp',
+      quantization
+    )
+    await executeOnMain(
+      NODE,
+      'renameSync',
+      modelOutPath + '.temp',
+      modelOutPath
+    )
+
+    await fs.unlinkSync(await this.getConvertedModelPath(repoID))
+  }
+
+  /**
+   * Cancels the convert of current Hugging Face model.
+   * @param repoID - The repository ID to cancel.
+   * @param repoData - The repository data to cancel.
+   * @returns {Promise<void>} A promise that resolves when the download has been cancelled.
+   */
+  async cancelConvert(
+    repoID: string,
+    repoData: HuggingFaceRepoData
+  ): Promise<void> {
+    this.interrupted = true
+    const modelDirPath = await this.getModelDirPath(repoID)
+    const files = this.getFileList(repoData)
+    for (const file of files) {
+      const filePath = file
+      const localPath = await joinPath([modelDirPath, filePath])
+      await abortDownload(localPath)
+    }
+
+    executeOnMain(NODE, 'killProcesses')
   }
 }

@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+
 import {
   Assistant,
   ConversationalExtension,
@@ -7,16 +9,14 @@ import {
   ThreadState,
   Model,
   AssistantTool,
-  events,
-  InferenceEvent,
 } from '@janhq/core'
 import { atom, useAtomValue, useSetAtom } from 'jotai'
 
-import { selectedModelAtom } from '@/containers/DropdownListSidebar'
 import { fileUploadAtom } from '@/containers/Providers/Jotai'
 
 import { generateThreadId } from '@/utils/thread'
 
+import { useActiveModel } from './useActiveModel'
 import useRecommendedModel from './useRecommendedModel'
 
 import useSetActiveThread from './useSetActiveThread'
@@ -24,6 +24,7 @@ import useSetActiveThread from './useSetActiveThread'
 import { extensionManager } from '@/extension'
 
 import { experimentalFeatureEnabledAtom } from '@/helpers/atoms/AppConfig.atom'
+import { selectedModelAtom } from '@/helpers/atoms/Model.atom'
 import {
   threadsAtom,
   threadStatesAtom,
@@ -63,6 +64,7 @@ export const useCreateNewThread = () => {
   const { recommendedModel, downloadedModels } = useRecommendedModel()
 
   const threads = useAtomValue(threadsAtom)
+  const { stopInference } = useActiveModel()
 
   const requestCreateNewThread = async (
     assistant: Assistant,
@@ -70,7 +72,7 @@ export const useCreateNewThread = () => {
   ) => {
     // Stop generating if any
     setIsGeneratingResponse(false)
-    events.emit(InferenceEvent.OnInferenceStopped, {})
+    stopInference()
 
     const defaultModel = model ?? recommendedModel ?? downloadedModels[0]
 
@@ -92,6 +94,16 @@ export const useCreateNewThread = () => {
       settings: assistant.tools && assistant.tools[0].settings,
     }
 
+    const overriddenSettings =
+      defaultModel?.settings.ctx_len && defaultModel.settings.ctx_len > 2048
+        ? { ctx_len: 2048 }
+        : {}
+
+    const overriddenParameters =
+      defaultModel?.parameters.max_tokens && defaultModel.parameters.max_tokens
+        ? { max_tokens: 2048 }
+        : {}
+
     const createdAt = Date.now()
     const assistantInfo: ThreadAssistantInfo = {
       assistant_id: assistant.id,
@@ -99,8 +111,9 @@ export const useCreateNewThread = () => {
       tools: experimentalEnabled ? [assistantTools] : assistant.tools,
       model: {
         id: defaultModel?.id ?? '*',
-        settings: defaultModel?.settings ?? {},
-        parameters: defaultModel?.parameters ?? {},
+        settings: { ...defaultModel?.settings, ...overriddenSettings } ?? {},
+        parameters:
+          { ...defaultModel?.parameters, ...overriddenParameters } ?? {},
         engine: defaultModel?.engine,
       },
       instructions: assistant.instructions,
@@ -124,6 +137,7 @@ export const useCreateNewThread = () => {
     setThreadModelParams(thread.id, {
       ...defaultModel?.settings,
       ...defaultModel?.parameters,
+      ...overriddenSettings,
     })
 
     // Delete the file upload state
@@ -134,13 +148,16 @@ export const useCreateNewThread = () => {
     setActiveThread(thread)
   }
 
-  async function updateThreadMetadata(thread: Thread) {
-    updateThread(thread)
+  const updateThreadMetadata = useCallback(
+    async (thread: Thread) => {
+      updateThread(thread)
 
-    await extensionManager
-      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
-      ?.saveThread(thread)
-  }
+      await extensionManager
+        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+        ?.saveThread(thread)
+    },
+    [updateThread]
+  )
 
   return {
     requestCreateNewThread,
