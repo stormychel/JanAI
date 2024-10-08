@@ -37,6 +37,7 @@ export enum AppRoute {
   getAppConfigurations = 'getAppConfigurations',
   updateAppConfiguration = 'updateAppConfiguration',
   joinPath = 'joinPath',
+  dirName = 'dirName',
   isSubdirectory = 'isSubdirectory',
   baseName = 'baseName',
   startServer = 'startServer',
@@ -55,6 +56,7 @@ export enum AppEvent {
   onSelectedText = 'onSelectedText',
 
   onDeepLink = 'onDeepLink',
+  onMainViewStateChange = 'onMainViewStateChange',
 }
 
 export enum DownloadRoute {
@@ -105,6 +107,7 @@ export enum FileManagerRoute {
   getUserHomePath = 'getUserHomePath',
   fileStat = 'fileStat',
   writeBlob = 'writeBlob',
+  getGgufFiles = 'getGgufFiles',
 }
 
 export type ApiFunction = (...args: any[]) => any

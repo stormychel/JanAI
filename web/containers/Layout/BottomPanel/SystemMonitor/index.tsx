@@ -19,6 +19,8 @@ import { usePath } from '@/hooks/usePath'
 
 import { toGibibytes } from '@/utils/converter'
 
+import { utilizedMemory } from '@/utils/memory'
+
 import TableActiveModel from './TableActiveModel'
 
 import { showSystemMonitorPanelAtom } from '@/helpers/atoms/App.atom'
@@ -88,7 +90,7 @@ const SystemMonitor = () => {
         <div
           ref={setElementExpand}
           className={twMerge(
-            'fixed bottom-9 left-[49px] z-50 flex w-[calc(100%-48px-8px)] flex-shrink-0 flex-col rounded-lg rounded-b-none border-t border-[hsla(var(--app-border))] bg-[hsla(var(--app-bg))]',
+            'fixed bottom-9 left-[49px] z-50 flex w-[calc(100%-48px)] flex-shrink-0 flex-col border-t border-[hsla(var(--app-border))] bg-[hsla(var(--app-bg))]',
             showFullScreen && 'h-[calc(100%-63px)]',
             reduceTransparent && 'w-[calc(100%-48px)] rounded-none'
           )}
@@ -128,7 +130,7 @@ const SystemMonitor = () => {
             </div>
           </div>
 
-          <div className="flex h-full gap-4">
+          <div className="flex h-full gap-y-4">
             <TableActiveModel />
 
             <div className="w-1/2 border-l border-[hsla(var(--app-border))] p-4">
@@ -159,35 +161,41 @@ const SystemMonitor = () => {
 
               {gpus.length > 0 && (
                 <div className="mb-4 border-b border-[hsla(var(--app-border))] pb-4 last:border-none">
-                  {gpus.map((gpu, index) => (
-                    <div key={index} className="mt-4 flex flex-col gap-x-2">
-                      <div className="flex w-full items-start justify-between">
-                        <span className="line-clamp-1 w-1/2 font-bold">
-                          {gpu.name}
-                        </span>
-                        <div className="flex gap-x-2">
-                          <div className="">
-                            <span>
-                              {gpu.memoryTotal - gpu.memoryFree}/
-                              {gpu.memoryTotal}
-                            </span>
-                            <span> MB</span>
+                  {gpus.map((gpu, index) => {
+                    const gpuUtilization = utilizedMemory(
+                      gpu.memoryFree,
+                      gpu.memoryTotal
+                    )
+                    return (
+                      <div key={index} className="mt-4 flex flex-col gap-x-2">
+                        <div className="flex w-full items-start justify-between">
+                          <span className="line-clamp-1 w-1/2 font-bold">
+                            {gpu.name}
+                          </span>
+                          <div className="flex gap-x-2">
+                            <div className="">
+                              <span>
+                                {gpu.memoryTotal - gpu.memoryFree}/
+                                {gpu.memoryTotal}
+                              </span>
+                              <span> MB</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-x-4">
-                        <Progress
-                          value={gpu.utilization}
-                          className="w-full"
-                          size="small"
-                        />
-                        <span className="flex-shrink-0 ">
-                          {gpu.utilization}%
-                        </span>
+                        <div className="flex items-center gap-x-4">
+                          <Progress
+                            value={gpuUtilization}
+                            className="w-full"
+                            size="small"
+                          />
+                          <span className="flex-shrink-0 ">
+                            {gpuUtilization}%
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

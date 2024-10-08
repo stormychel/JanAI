@@ -15,10 +15,13 @@ import { MainViewState } from '@/constants/screens'
 import { mainViewStateAtom, showLeftPanelAtom } from '@/helpers/atoms/App.atom'
 import { editMessageAtom } from '@/helpers/atoms/ChatMessage.atom'
 import { serverEnabledAtom } from '@/helpers/atoms/LocalServer.atom'
+
+import { isDownloadALocalModelAtom } from '@/helpers/atoms/Model.atom'
 import {
   reduceTransparentAtom,
   selectedSettingAtom,
 } from '@/helpers/atoms/Setting.atom'
+import { threadsAtom } from '@/helpers/atoms/Thread.atom'
 
 export default function RibbonPanel() {
   const [mainViewState, setMainViewState] = useAtom(mainViewStateAtom)
@@ -28,6 +31,9 @@ export default function RibbonPanel() {
   const matches = useMediaQuery('(max-width: 880px)')
   const reduceTransparent = useAtomValue(reduceTransparentAtom)
   const setSelectedSetting = useSetAtom(selectedSettingAtom)
+
+  const threads = useAtomValue(threadsAtom)
+  const isDownloadALocalModel = useAtomValue(isDownloadALocalModelAtom)
 
   const onMenuClick = (state: MainViewState) => {
     if (mainViewState === state) return
@@ -77,7 +83,11 @@ export default function RibbonPanel() {
           'border-none',
         !showLeftPanel && !reduceTransparent && 'border-none',
         matches && !reduceTransparent && 'border-none',
-        reduceTransparent && ' bg-[hsla(var(--ribbon-panel-bg))]'
+        reduceTransparent && ' bg-[hsla(var(--ribbon-panel-bg))]',
+        mainViewState === MainViewState.Thread &&
+          !isDownloadALocalModel &&
+          !threads.length &&
+          'border-none'
       )}
     >
       {RibbonNavMenus.filter((menu) => !!menu).map((menu, i) => {

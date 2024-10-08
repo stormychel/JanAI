@@ -10,6 +10,8 @@ import { Badge, Button, Progress } from '@janhq/joi'
 
 import { useAtomValue, useSetAtom } from 'jotai'
 
+import { twMerge } from 'tailwind-merge'
+
 import { MainViewState } from '@/constants/screens'
 
 import { useCreateNewThread } from '@/hooks/useCreateNewThread'
@@ -51,7 +53,7 @@ const ModelDownloadRow: React.FC<Props> = ({
   const { requestCreateNewThread } = useCreateNewThread()
   const setMainViewState = useSetAtom(mainViewStateAtom)
   const assistants = useAtomValue(assistantsAtom)
-  const isDownloaded = downloadedModels.find((md) => md.id === fileName) != null
+  const downloadedModel = downloadedModels.find((md) => md.id === fileName)
 
   const setHfImportingStage = useSetAtom(importHuggingFaceModelStageAtom)
   const defaultModel = useAtomValue(defaultModelAtom)
@@ -98,12 +100,12 @@ const ModelDownloadRow: React.FC<Props> = ({
       alert('No assistant available')
       return
     }
-    await requestCreateNewThread(assistants[0], model)
+    await requestCreateNewThread(assistants[0], downloadedModel)
     setMainViewState(MainViewState.Thread)
     setHfImportingStage('NONE')
   }, [
     assistants,
-    model,
+    downloadedModel,
     requestCreateNewThread,
     setMainViewState,
     setHfImportingStage,
@@ -114,20 +116,30 @@ const ModelDownloadRow: React.FC<Props> = ({
   }
 
   return (
-    <div className="flex w-[662px] flex-row items-center justify-between space-x-1 rounded border border-[hsla(var(--app-border))] p-3">
-      <div className="flex">
-        {quantization && (
-          <Badge variant="soft" className="mr-1">
-            {quantization}
-          </Badge>
-        )}
-        <h1 className="mr-5 line-clamp-1 font-medium text-[hsla(var(--text-secondary))]">
-          {fileName}
-        </h1>
-        <Badge theme="secondary">{toGibibytes(fileSize)}</Badge>
+    <div className="flex flex-col gap-4 rounded border border-[hsla(var(--app-border))] p-3 md:flex-row md:items-center md:justify-between xl:w-full">
+      <div className="flex justify-between">
+        <div className="flex">
+          {quantization && (
+            <Badge variant="soft" className="mr-1">
+              {quantization}
+            </Badge>
+          )}
+          <h1
+            className={twMerge(
+              'mr-5 line-clamp-1 font-medium text-[hsla(var(--text-secondary))]',
+              quantization && 'max-w-[25ch]'
+            )}
+            title={fileName}
+          >
+            {fileName}
+          </h1>
+        </div>
+        <Badge theme="secondary" className="hidden md:flex">
+          {toGibibytes(fileSize)}
+        </Badge>
       </div>
 
-      {isDownloaded ? (
+      {downloadedModel ? (
         <Button
           variant="soft"
           className="min-w-[98px]"

@@ -15,7 +15,6 @@ const ListContainer = ({ children }: Props) => {
     const currentScrollTop = event.currentTarget.scrollTop
 
     if (prevScrollTop.current > currentScrollTop) {
-      console.debug('User is manually scrolling up')
       isUserManuallyScrollingUp.current = true
     } else {
       const currentScrollTop = event.currentTarget.scrollTop
@@ -23,7 +22,6 @@ const ListContainer = ({ children }: Props) => {
       const clientHeight = event.currentTarget.clientHeight
 
       if (currentScrollTop + clientHeight >= scrollHeight) {
-        console.debug('Scrolled to the bottom')
         isUserManuallyScrollingUp.current = false
       }
     }
@@ -31,7 +29,7 @@ const ListContainer = ({ children }: Props) => {
   }, [])
 
   useEffect(() => {
-    if (isUserManuallyScrollingUp.current === true) return
+    if (isUserManuallyScrollingUp.current === true || !listRef.current) return
     const scrollHeight = listRef.current?.scrollHeight ?? 0
     listRef.current?.scrollTo({
       top: scrollHeight,

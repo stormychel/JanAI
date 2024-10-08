@@ -33,7 +33,7 @@ const ModelSegmentInfo = () => {
   if (!importingHuggingFaceRepoData) return null
 
   return (
-    <div className="flex w-full flex-col space-y-4">
+    <div className="flex w-full flex-col space-y-4 lg:w-1/3">
       <HeaderInfo title={'Model ID'}>
         <h1 className="font-medium text-zinc-500 dark:text-gray-300">
           {modelName}
@@ -72,7 +72,7 @@ const ModelSegmentInfo = () => {
       </div>
 
       <HeaderInfo title="Tags">
-        <div className="mt-2 flex flex-wrap gap-x-1 gap-y-1">
+        <div className="mt-2 flex h-14 flex-wrap gap-x-1 gap-y-1 overflow-auto lg:h-auto">
           {importingHuggingFaceRepoData.tags.map((tag) => (
             <Badge variant="soft" key={tag} title={tag} className="mt-1">
               <span className="line-clamp-1">{tag}</span>

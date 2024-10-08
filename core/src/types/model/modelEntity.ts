@@ -1,3 +1,5 @@
+import { FileMetadata } from '../file'
+
 /**
  * Represents the information about a model.
  * @stored
@@ -25,6 +27,10 @@ export enum InferenceEngine {
   triton_trtllm = 'triton_trtllm',
   nitro_tensorrt_llm = 'nitro-tensorrt-llm',
   cohere = 'cohere',
+  nvidia = 'nvidia',
+  cortex_llamacpp = 'cortex.llamacpp',
+  cortex_onnx = 'cortex.onnx',
+  cortex_tensorrtllm = 'cortex.tensorrt-llm',
 }
 
 export type ModelArtifact = {
@@ -103,6 +109,9 @@ export type ModelMetadata = {
   tags: string[]
   size: number
   cover?: string
+  // These settings to preserve model settings across threads
+  default_ctx_len?: number
+  default_max_tokens?: number
 }
 
 /**
@@ -144,3 +153,8 @@ export type ModelRuntimeParams = {
 export type ModelInitFailed = Model & {
   error: Error
 }
+
+/**
+ * ModelFile is the model.json entity and it's file metadata
+ */
+export type ModelFile = Model & FileMetadata

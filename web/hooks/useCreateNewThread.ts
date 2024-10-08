@@ -7,12 +7,15 @@ import {
   Thread,
   ThreadAssistantInfo,
   ThreadState,
-  Model,
   AssistantTool,
+  ModelFile,
 } from '@janhq/core'
 import { atom, useAtomValue, useSetAtom } from 'jotai'
 
+import { copyOverInstructionEnabledAtom } from '@/containers/CopyInstruction'
 import { fileUploadAtom } from '@/containers/Providers/Jotai'
+
+import { toaster } from '@/containers/Toast'
 
 import { generateThreadId } from '@/utils/thread'
 
@@ -31,6 +34,7 @@ import {
   updateThreadAtom,
   setThreadModelParamsAtom,
   isGeneratingResponseAtom,
+  activeThreadAtom,
 } from '@/helpers/atoms/Thread.atom'
 
 const createNewThreadAtom = atom(null, (get, set, newThread: Thread) => {
@@ -57,6 +61,10 @@ export const useCreateNewThread = () => {
   const setFileUpload = useSetAtom(fileUploadAtom)
   const setSelectedModel = useSetAtom(selectedModelAtom)
   const setThreadModelParams = useSetAtom(setThreadModelParamsAtom)
+  const copyOverInstructionEnabled = useAtomValue(
+    copyOverInstructionEnabledAtom
+  )
+  const activeThread = useAtomValue(activeThreadAtom)
 
   const experimentalEnabled = useAtomValue(experimentalFeatureEnabledAtom)
   const setIsGeneratingResponse = useSetAtom(isGeneratingResponseAtom)
@@ -68,7 +76,7 @@ export const useCreateNewThread = () => {
 
   const requestCreateNewThread = async (
     assistant: Assistant,
-    model?: Model | undefined
+    model?: ModelFile | undefined
   ) => {
     // Stop generating if any
     setIsGeneratingResponse(false)
@@ -83,7 +91,11 @@ export const useCreateNewThread = () => {
       const lastMessage = threads[0]?.metadata?.lastMessage
 
       if (!lastMessage && threads.length) {
-        return null
+        return toaster({
+          title: 'No new thread created.',
+          description: `To avoid piling up empty threads, please reuse previous one before creating new.`,
+          type: 'warning',
+        })
       }
     }
 
@@ -93,30 +105,31 @@ export const useCreateNewThread = () => {
       enabled: true,
       settings: assistant.tools && assistant.tools[0].settings,
     }
-
     const overriddenSettings =
       defaultModel?.settings.ctx_len && defaultModel.settings.ctx_len > 2048
-        ? { ctx_len: 2048 }
+        ? { ctx_len: 4096 }
         : {}
 
-    const overriddenParameters =
-      defaultModel?.parameters.max_tokens && defaultModel.parameters.max_tokens
-        ? { max_tokens: 2048 }
-        : {}
+    const overriddenParameters = defaultModel?.parameters.max_tokens
+      ? { max_tokens: 4096 }
+      : {}
 
     const createdAt = Date.now()
+    let instructions: string | undefined = assistant.instructions
+    if (copyOverInstructionEnabled) {
+      instructions = activeThread?.assistants[0]?.instructions ?? undefined
+    }
     const assistantInfo: ThreadAssistantInfo = {
       assistant_id: assistant.id,
       assistant_name: assistant.name,
       tools: experimentalEnabled ? [assistantTools] : assistant.tools,
       model: {
         id: defaultModel?.id ?? '*',
-        settings: { ...defaultModel?.settings, ...overriddenSettings } ?? {},
-        parameters:
-          { ...defaultModel?.parameters, ...overriddenParameters } ?? {},
+        settings: { ...defaultModel?.settings, ...overriddenSettings },
+        parameters: { ...defaultModel?.parameters, ...overriddenParameters },
         engine: defaultModel?.engine,
       },
-      instructions: assistant.instructions,
+      instructions,
     }
 
     const threadId = generateThreadId(assistant.id)

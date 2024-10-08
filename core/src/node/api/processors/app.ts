@@ -1,4 +1,4 @@
-import { basename, isAbsolute, join, relative } from 'path'
+import { basename, dirname, isAbsolute, join, relative } from 'path'
 
 import { Processor } from './Processor'
 import {
@@ -6,6 +6,8 @@ import {
   appResourcePath,
   getAppConfigurations as appConfiguration,
   updateAppConfiguration,
+  normalizeFilePath,
+  getJanDataFolderPath,
 } from '../../helper'
 
 export class App implements Processor {
@@ -26,6 +28,18 @@ export class App implements Processor {
    */
   joinPath(args: any[]) {
     return join(...args)
+  }
+
+  /**
+   * Get dirname of a file path.
+   * @param path - The file path to retrieve dirname.
+   */
+  dirName(path: string) {
+    const arg =
+      path.startsWith(`file:/`) || path.startsWith(`file:\\`)
+        ? join(getJanDataFolderPath(), normalizeFilePath(path))
+        : path
+    return dirname(arg)
   }
 
   /**
@@ -77,8 +91,8 @@ export class App implements Processor {
       port: args?.port,
       isCorsEnabled: args?.isCorsEnabled,
       isVerboseEnabled: args?.isVerboseEnabled,
-      schemaPath: join(await appResourcePath(), 'docs', 'openapi', 'jan.yaml'),
-      baseDir: join(await appResourcePath(), 'docs', 'openapi'),
+      schemaPath: join(appResourcePath(), 'docs', 'openapi', 'jan.yaml'),
+      baseDir: join(appResourcePath(), 'docs', 'openapi'),
       prefix: args?.prefix,
     })
   }

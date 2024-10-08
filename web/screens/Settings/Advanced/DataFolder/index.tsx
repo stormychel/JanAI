@@ -94,13 +94,13 @@ const DataFolder = () => {
             <h6 className="font-semibold capitalize">Jan Data Folder</h6>
           </div>
           <p className="font-medium leading-relaxed text-[hsla(var(--text-secondary))]">
-            Where messages, model configurations, and other user data are
-            placed.
+            Default location for messages and other user data.
           </p>
         </div>
         <div className="flex items-center gap-x-3">
           <div className="relative">
             <Input
+              data-testid="jan-data-folder-input"
               value={janDataFolderPath}
               className="w-full pr-8 sm:w-[240px]"
               disabled

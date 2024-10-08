@@ -12,8 +12,8 @@ const codeninja7bJson = require('./resources/models/codeninja-1.0-7b/model.json'
 const commandr34bJson = require('./resources/models/command-r-34b/model.json')
 const deepseekCoder13bJson = require('./resources/models/deepseek-coder-1.3b/model.json')
 const deepseekCoder34bJson = require('./resources/models/deepseek-coder-34b/model.json')
-const gemma2bJson = require('./resources/models/gemma-2b/model.json')
-const gemma7bJson = require('./resources/models/gemma-7b/model.json')
+const gemma112bJson = require('./resources/models/gemma-1.1-2b/model.json')
+const gemma117bJson = require('./resources/models/gemma-1.1-7b/model.json')
 const llama2Chat70bJson = require('./resources/models/llama2-chat-70b/model.json')
 const llama2Chat7bJson = require('./resources/models/llama2-chat-7b/model.json')
 const llamacorn1bJson = require('./resources/models/llamacorn-1.1b/model.json')
@@ -40,7 +40,18 @@ const aya35bJson = require('./resources/models/aya-23-35b/model.json')
 const phimediumJson = require('./resources/models/phi3-medium/model.json')
 const codestralJson = require('./resources/models/codestral-22b/model.json')
 const qwen2Json = require('./resources/models/qwen2-7b/model.json')
-
+const llama318bJson = require('./resources/models/llama3.1-8b-instruct/model.json')
+const llama3170bJson = require('./resources/models/llama3.1-70b-instruct/model.json')
+const gemma22bJson = require('./resources/models/gemma-2-2b/model.json')
+const gemma29bJson = require('./resources/models/gemma-2-9b/model.json')
+const gemma227bJson = require('./resources/models/gemma-2-27b/model.json')
+const llama321bJson = require('./resources/models/llama3.2-1b-instruct/model.json')
+const llama323bJson = require('./resources/models/llama3.2-3b-instruct/model.json')
+const qwen257bJson = require('./resources/models/qwen2.5-7b-instruct/model.json')
+const qwen25coder7bJson = require('./resources/models/qwen2.5-coder-7b-instruct/model.json')
+const qwen2514bJson = require('./resources/models/qwen2.5-14b-instruct/model.json')
+const qwen2532bJson = require('./resources/models/qwen2.5-32b-instruct/model.json')
+const qwen2572bJson = require('./resources/models/qwen2.5-72b-instruct/model.json')
 
 export default [
   {
@@ -60,8 +71,8 @@ export default [
           commandr34bJson,
           deepseekCoder13bJson,
           deepseekCoder34bJson,
-          gemma2bJson,
-          gemma7bJson,
+          gemma112bJson,
+          gemma117bJson,
           llama2Chat70bJson,
           llama2Chat7bJson,
           llamacorn1bJson,
@@ -87,7 +98,19 @@ export default [
           aya8bJson,
           aya35bJson,
           codestralJson,
-          qwen2Json
+          qwen2Json,
+          llama318bJson,
+          llama3170bJson,
+          gemma22bJson,
+          gemma29bJson,
+          gemma227bJson,
+          llama321bJson,
+          llama323bJson,
+          qwen257bJson,
+          qwen25coder7bJson,
+          qwen2514bJson,
+          qwen2532bJson,
+          qwen2572bJson,
         ]),
         NODE: JSON.stringify(`${packageJson.name}/${packageJson.node}`),
         DEFAULT_SETTINGS: JSON.stringify(defaultSettingJson),
@@ -108,7 +131,10 @@ export default [
       // Allow json resolution
       json(),
       //     Compile TypeScript files
-      typescript({ useTsconfigDeclarationDir: true }),
+      typescript({
+        useTsconfigDeclarationDir: true,
+        exclude: ['**/__tests__', '**/*.test.ts'],
+      }),
       // Compile TypeScript files
       // Allow bundling cjs modules (unlike webpack, rollup doesn't understand cjs)
       commonjs(),
@@ -130,7 +156,7 @@ export default [
       { file: 'dist/node/index.cjs.js', format: 'cjs', sourcemap: true },
     ],
     // Indicate here external modules you don't wanna include in your bundle (i.e.: 'lodash')
-    external: ['@janhq/core/node'],
+    external: ['@janhq/core/node', 'cpu-instructions'],
     watch: {
       include: 'src/node/**',
     },
@@ -138,7 +164,10 @@ export default [
       // Allow json resolution
       json(),
       // Compile TypeScript files
-      typescript({ useTsconfigDeclarationDir: true }),
+      typescript({
+        useTsconfigDeclarationDir: true,
+        exclude: ['**/__tests__', '**/*.test.ts'],
+      }),
       // Allow bundling cjs modules (unlike webpack, rollup doesn't understand cjs)
       commonjs(),
       // Allow node_modules resolution, so you can use 'external' to control
@@ -147,7 +176,6 @@ export default [
       resolve({
         extensions: ['.ts', '.js', '.json'],
       }),
-
       // Resolve source maps to the original source
       sourceMaps(),
     ],

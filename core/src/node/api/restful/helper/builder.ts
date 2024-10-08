@@ -280,13 +280,13 @@ export const downloadModel = async (
   for (const source of model.sources) {
     const rq = request({ url: source, strictSSL, proxy })
     progress(rq, {})
-      .on('progress', function (state: any) {
+      ?.on('progress', function (state: any) {
         console.debug('progress', JSON.stringify(state, null, 2))
       })
-      .on('error', function (err: Error) {
+      ?.on('error', function (err: Error) {
         console.error('error', err)
       })
-      .on('end', function () {
+      ?.on('end', function () {
         console.debug('end')
       })
       .pipe(createWriteStream(modelBinaryPath))
@@ -341,6 +341,11 @@ export const chatCompletions = async (request: any, reply: any) => {
     request.body.stop = request.body.stop.slice(0, 4)
   }
 
+  // add engine for new cortex cpp engine
+  if (requestedModel.engine === 'nitro') {
+    request.body.engine = 'cortex.llamacpp'
+  }
+
   const fetch = require('node-fetch')
   const response = await fetch(apiUrl, {
     method: 'POST',
@@ -348,8 +353,10 @@ export const chatCompletions = async (request: any, reply: any) => {
     body: JSON.stringify(request.body),
   })
   if (response.status !== 200) {
-    console.error(response)
-    reply.code(400).send(response)
+    // Forward the error response to client via reply
+    const responseBody = await response.text()
+    const responseHeaders = Object.fromEntries(response.headers)
+    reply.code(response.status).headers(responseHeaders).send(responseBody)
   } else {
     reply.raw.writeHead(200, {
       'Content-Type': request.body.stream === true ? 'text/event-stream' : 'application/json',

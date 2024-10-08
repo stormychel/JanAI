@@ -1,6 +1,10 @@
 import { memo, useCallback, useMemo } from 'react'
 
-import { SettingComponentProps, SliderComponentProps } from '@janhq/core/.'
+import {
+  InferenceEngine,
+  SettingComponentProps,
+  SliderComponentProps,
+} from '@janhq/core'
 import {
   Tabs,
   TabsContent,
@@ -11,6 +15,7 @@ import {
 
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 
+import CopyOverInstruction from '@/containers/CopyInstruction'
 import EngineSetting from '@/containers/EngineSetting'
 import ModelDropdown from '@/containers/ModelDropdown'
 
@@ -23,7 +28,11 @@ import { useCreateNewThread } from '@/hooks/useCreateNewThread'
 import useUpdateModelParameters from '@/hooks/useUpdateModelParameters'
 
 import { getConfigurationsData } from '@/utils/componentSettings'
-import { toRuntimeParams, toSettingParams } from '@/utils/modelParam'
+import { isLocalEngine } from '@/utils/modelEngine'
+import {
+  extractInferenceParams,
+  extractModelLoadParams,
+} from '@/utils/modelParam'
 
 import PromptTemplateSetting from './PromptTemplateSetting'
 import Tools from './Tools'
@@ -38,6 +47,10 @@ import {
 
 import { activeTabThreadRightPanelAtom } from '@/helpers/atoms/ThreadRightPanel.atom'
 
+const INFERENCE_SETTINGS = 'Inference Settings'
+const MODEL_SETTINGS = 'Model Settings'
+const ENGINE_SETTINGS = 'Engine Settings'
+
 const ThreadRightPanel = () => {
   const activeThread = useAtomValue(activeThreadAtom)
   const activeModelParams = useAtomValue(getActiveThreadModelParamsAtom)
@@ -48,20 +61,36 @@ const ThreadRightPanel = () => {
   const { updateThreadMetadata } = useCreateNewThread()
   const experimentalFeature = useAtomValue(experimentalFeatureEnabledAtom)
 
+  const isModelSupportRagAndTools =
+    selectedModel?.engine === InferenceEngine.openai ||
+    isLocalEngine(selectedModel?.engine as InferenceEngine)
+
   const setEngineParamsUpdate = useSetAtom(engineParamsUpdateAtom)
   const { stopModel } = useActiveModel()
   const { updateModelParameter } = useUpdateModelParameters()
 
   const settings = useMemo(() => {
     // runtime setting
-    const modelRuntimeParams = toRuntimeParams(activeModelParams)
+    const modelRuntimeParams = extractInferenceParams(
+      {
+        ...selectedModel?.parameters,
+        ...activeModelParams,
+      },
+      selectedModel?.parameters
+    )
     const componentDataRuntimeSetting = getConfigurationsData(
       modelRuntimeParams,
       selectedModel
     ).filter((x) => x.key !== 'prompt_template')
 
     // engine setting
-    const modelEngineParams = toSettingParams(activeModelParams)
+    const modelEngineParams = extractModelLoadParams(
+      {
+        ...selectedModel?.settings,
+        ...activeModelParams,
+      },
+      selectedModel?.settings
+    )
     const componentDataEngineSetting = getConfigurationsData(
       modelEngineParams,
       selectedModel
@@ -112,7 +141,10 @@ const ThreadRightPanel = () => {
   }, [activeModelParams, selectedModel])
 
   const promptTemplateSettings = useMemo(() => {
-    const modelEngineParams = toSettingParams(activeModelParams)
+    const modelEngineParams = extractModelLoadParams({
+      ...selectedModel?.settings,
+      ...activeModelParams,
+    })
     const componentDataEngineSetting = getConfigurationsData(
       modelEngineParams,
       selectedModel
@@ -188,9 +220,18 @@ const ThreadRightPanel = () => {
         options={[
           { name: 'Assistant', value: 'assistant' },
           { name: 'Model', value: 'model' },
-          ...(experimentalFeature ? [{ name: 'Tools', value: 'tools' }] : []),
+          ...(experimentalFeature
+            ? [
+                {
+                  name: 'Tools',
+                  value: 'tools',
+                  disabled: !isModelSupportRagAndTools,
+                  tooltipContent: 'Not supported for this model',
+                },
+              ]
+            : []),
         ]}
-        value={activeTabThreadRightPanel}
+        value={activeTabThreadRightPanel as string}
         onValueChange={(value) => setActiveTabThreadRightPanel(value)}
       >
         <TabsContent value="assistant">
@@ -206,9 +247,11 @@ const ThreadRightPanel = () => {
                 id="assistant-instructions"
                 placeholder="Eg. You are a helpful assistant."
                 value={activeThread?.assistants[0].instructions ?? ''}
+                autoResize
                 onChange={onAssistantInstructionChanged}
               />
             </div>
+            {experimentalFeature && <CopyOverInstruction />}
           </div>
         </TabsContent>
         <TabsContent value="model">
@@ -218,8 +261,8 @@ const ThreadRightPanel = () => {
           <Accordion defaultValue={[]}>
             {settings.runtimeSettings.length !== 0 && (
               <AccordionItem
-                title="Inference Parameters"
-                value="Inference Parameters"
+                title={INFERENCE_SETTINGS}
+                value={INFERENCE_SETTINGS}
               >
                 <ModelSetting
                   componentProps={settings.runtimeSettings}
@@ -229,16 +272,13 @@ const ThreadRightPanel = () => {
             )}
 
             {promptTemplateSettings.length !== 0 && (
-              <AccordionItem title="Model Parameters" value="Model Parameters">
+              <AccordionItem title={MODEL_SETTINGS} value={MODEL_SETTINGS}>
                 <PromptTemplateSetting componentData={promptTemplateSettings} />
               </AccordionItem>
             )}
 
             {settings.engineSettings.length !== 0 && (
-              <AccordionItem
-                title="Engine Parameters"
-                value="Engine Parameters"
-              >
+              <AccordionItem title={ENGINE_SETTINGS} value={ENGINE_SETTINGS}>
                 <EngineSetting
                   componentData={settings.engineSettings}
                   onValueChanged={onValueChanged}

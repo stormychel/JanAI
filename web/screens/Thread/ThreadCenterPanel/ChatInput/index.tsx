@@ -1,17 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
 
-import { MessageStatus } from '@janhq/core'
+import { InferenceEngine, MessageStatus } from '@janhq/core'
 
-import {
-  TextArea,
-  Button,
-  Tooltip,
-  useClickOutside,
-  Badge,
-  useMediaQuery,
-} from '@janhq/joi'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { TextArea, Button, Tooltip, useClickOutside, Badge } from '@janhq/joi'
+import { useAtom, useAtomValue } from 'jotai'
 import {
   FileTextIcon,
   ImageIcon,
@@ -20,7 +13,6 @@ import {
   SettingsIcon,
   ChevronUpIcon,
   Settings2Icon,
-  ShapesIcon,
 } from 'lucide-react'
 
 import { twMerge } from 'tailwind-merge'
@@ -32,14 +24,18 @@ import { useActiveModel } from '@/hooks/useActiveModel'
 
 import useSendChatMessage from '@/hooks/useSendChatMessage'
 
+import { isLocalEngine } from '@/utils/modelEngine'
+
 import FileUploadPreview from '../FileUploadPreview'
 import ImageUploadPreview from '../ImageUploadPreview'
 
 import { showRightPanelAtom } from '@/helpers/atoms/App.atom'
 import { experimentalFeatureEnabledAtom } from '@/helpers/atoms/AppConfig.atom'
 import { getCurrentChatMessagesAtom } from '@/helpers/atoms/ChatMessage.atom'
+import { selectedModelAtom } from '@/helpers/atoms/Model.atom'
 import { spellCheckAtom } from '@/helpers/atoms/Setting.atom'
 import {
+  activeSettingInputBoxAtom,
   activeThreadAtom,
   getActiveThreadIdAtom,
   isGeneratingResponseAtom,
@@ -52,11 +48,15 @@ const ChatInput = () => {
   const activeThread = useAtomValue(activeThreadAtom)
   const { stateModel } = useActiveModel()
   const messages = useAtomValue(getCurrentChatMessagesAtom)
-  const [activeSetting, setActiveSetting] = useState(false)
+  // const [activeSetting, setActiveSetting] = useState(false)
   const spellCheck = useAtomValue(spellCheckAtom)
 
   const [currentPrompt, setCurrentPrompt] = useAtom(currentPromptAtom)
+  const [activeSettingInputBox, setActiveSettingInputBox] = useAtom(
+    activeSettingInputBoxAtom
+  )
   const { sendChatMessage } = useSendChatMessage()
+  const selectedModel = useAtomValue(selectedModelAtom)
 
   const activeThreadId = useAtomValue(getActiveThreadIdAtom)
   const [isWaitingToSend, setIsWaitingToSend] = useAtom(waitingToSendMessage)
@@ -70,7 +70,9 @@ const ChatInput = () => {
   const threadStates = useAtomValue(threadStatesAtom)
   const { stopInference } = useActiveModel()
 
-  const setActiveTabThreadRightPanel = useSetAtom(activeTabThreadRightPanelAtom)
+  const [activeTabThreadRightPanel, setActiveTabThreadRightPanel] = useAtom(
+    activeTabThreadRightPanelAtom
+  )
 
   const isStreamingResponse = Object.values(threadStates).some(
     (threadState) => threadState.waitingForResponse
@@ -82,8 +84,6 @@ const ChatInput = () => {
 
   const refAttachmentMenus = useClickOutside(() => setShowAttacmentMenus(false))
   const [showRightPanel, setShowRightPanel] = useAtom(showRightPanelAtom)
-
-  const matches = useMediaQuery('(max-width: 880px)')
 
   useEffect(() => {
     if (isWaitingToSend && activeThreadId) {
@@ -106,12 +106,14 @@ const ChatInput = () => {
 
   useEffect(() => {
     if (textareaRef.current?.clientHeight) {
-      textareaRef.current.style.height = activeSetting ? '100px' : '40px'
+      textareaRef.current.style.height = activeSettingInputBox
+        ? '100px'
+        : '40px'
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
       textareaRef.current.style.overflow =
         textareaRef.current.clientHeight >= 390 ? 'auto' : 'hidden'
     }
-  }, [textareaRef.current?.clientHeight, currentPrompt, activeSetting])
+  }, [textareaRef.current?.clientHeight, currentPrompt, activeSettingInputBox])
 
   const onKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -125,6 +127,10 @@ const ChatInput = () => {
   const onStopInferenceClick = async () => {
     stopInference()
   }
+
+  const isModelSupportRagAndTools =
+    selectedModel?.engine === InferenceEngine.openai ||
+    isLocalEngine(selectedModel?.engine as InferenceEngine)
 
   /**
    * Handles the change event of the extension file input element by setting the file name state.
@@ -162,11 +168,11 @@ const ChatInput = () => {
             'relative max-h-[400px] resize-none  pr-20',
             fileUpload.length && 'rounded-t-none',
             experimentalFeature && 'pl-10',
-            activeSetting && 'pb-14 pr-16'
+            activeSettingInputBox && 'pb-14 pr-16'
           )}
           spellCheck={spellCheck}
           data-testid="txt-input-chat"
-          style={{ height: activeSetting ? '100px' : '40px' }}
+          style={{ height: activeSettingInputBox ? '100px' : '40px' }}
           ref={textareaRef}
           onKeyDown={onKeyDown}
           placeholder="Ask me anything"
@@ -200,6 +206,7 @@ const ChatInput = () => {
               </Button>
             }
             disabled={
+              isModelSupportRagAndTools &&
               activeThread?.assistants[0].tools &&
               activeThread?.assistants[0].tools[0]?.enabled
             }
@@ -219,12 +226,16 @@ const ChatInput = () => {
                         )}
                         {activeThread?.assistants[0].tools &&
                           activeThread?.assistants[0].tools[0]?.enabled ===
-                            false && (
+                            false &&
+                          isModelSupportRagAndTools && (
                             <span>
-                              Turn on Retrieval in Assistant Settings to use
-                              this feature.
+                              Turn on Retrieval in Tools settings to use this
+                              feature
                             </span>
                           )}
+                        {!isModelSupportRagAndTools && (
+                          <span>Not supported for this model</span>
+                        )}
                       </>
                     ))}
               </>
@@ -237,7 +248,7 @@ const ChatInput = () => {
             ref={refAttachmentMenus}
             className={twMerge(
               'absolute bottom-14 left-0 z-30 w-36 cursor-pointer rounded-lg border border-[hsla(var(--app-border))] bg-[hsla(var(--app-bg))] py-1 shadow-sm',
-              activeSetting && 'bottom-28'
+              activeSettingInputBox && 'bottom-28'
             )}
           >
             <ul>
@@ -320,12 +331,12 @@ const ChatInput = () => {
 
         <div className={twMerge('absolute right-3 top-1.5')}>
           <div className="flex items-center gap-x-4">
-            {!activeSetting && (
+            {!activeSettingInputBox && (
               <div className="flex h-8 items-center">
                 <Button
                   theme="icon"
                   onClick={() => {
-                    setActiveSetting(!activeSetting)
+                    setActiveSettingInputBox(!activeSettingInputBox)
                   }}
                 >
                   <SettingsIcon
@@ -378,24 +389,46 @@ const ChatInput = () => {
           </div>
         </div>
 
-        {activeSetting && (
+        {activeSettingInputBox && (
           <div
             className={twMerge(
-              'absolute bottom-[6px] left-[1px] flex w-[calc(100%-2px)] items-center justify-between rounded-lg bg-[hsla(var(--textarea-bg))] p-3',
+              'absolute bottom-[6px] left-[1px] flex w-[calc(100%-10px)] items-center justify-between rounded-b-lg bg-[hsla(var(--center-panel-bg))] p-3 pr-0',
               !activeThread && 'bg-transparent',
               stateModel.loading && 'bg-transparent'
             )}
           >
-            <div className="flex items-center gap-x-3">
+            <div className="flex items-center gap-x-2">
               <ModelDropdown chatInputMode />
-              <Button
-                theme="icon"
+              <Badge
+                theme="secondary"
+                className={twMerge(
+                  'flex cursor-pointer items-center gap-x-1',
+                  activeTabThreadRightPanel === 'model' &&
+                    'border border-transparent'
+                )}
+                variant={
+                  activeTabThreadRightPanel === 'model' ? 'solid' : 'outline'
+                }
                 onClick={() => {
-                  setActiveTabThreadRightPanel('model')
-                  if (matches) {
-                    setShowRightPanel(!showRightPanel)
-                  } else if (!showRightPanel) {
+                  // TODO @faisal: should be refactor later and better experience beetwen tab and toggle button
+                  if (showRightPanel && activeTabThreadRightPanel !== 'model') {
                     setShowRightPanel(true)
+                    setActiveTabThreadRightPanel('model')
+                  }
+                  if (showRightPanel && activeTabThreadRightPanel === 'model') {
+                    setShowRightPanel(false)
+                    setActiveTabThreadRightPanel(undefined)
+                  }
+                  if (activeTabThreadRightPanel === undefined) {
+                    setShowRightPanel(true)
+                    setActiveTabThreadRightPanel('model')
+                  }
+                  if (
+                    !showRightPanel &&
+                    activeTabThreadRightPanel !== 'model'
+                  ) {
+                    setShowRightPanel(true)
+                    setActiveTabThreadRightPanel('model')
                   }
                 }}
               >
@@ -403,11 +436,15 @@ const ChatInput = () => {
                   size={16}
                   className="flex-shrink-0 cursor-pointer text-[hsla(var(--text-secondary))]"
                 />
-              </Button>
-              {experimentalFeature && (
+              </Badge>
+              {/* Temporary disable it */}
+              {/* {experimentalFeature && (
                 <Badge
                   className="flex cursor-pointer items-center gap-x-1"
                   theme="secondary"
+                  variant={
+                    activeTabThreadRightPanel === 'tools' ? 'solid' : 'outline'
+                  }
                   onClick={() => {
                     setActiveTabThreadRightPanel('tools')
                     if (matches) {
@@ -423,9 +460,12 @@ const ChatInput = () => {
                   />
                   <span>Tools</span>
                 </Badge>
-              )}
+              )} */}
             </div>
-            <Button theme="icon" onClick={() => setActiveSetting(false)}>
+            <Button
+              theme="icon"
+              onClick={() => setActiveSettingInputBox(false)}
+            >
               <ChevronUpIcon
                 size={16}
                 className="cursor-pointer text-[hsla(var(--text-secondary))]"
